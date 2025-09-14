@@ -1,0 +1,7 @@
+streamlit
+pandas
+httpx
+postgrest
+altair
+python-dotenv
+supabase
