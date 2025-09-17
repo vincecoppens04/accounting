@@ -36,3 +36,7 @@ def authenticate():
             else:
                 st.error("Password is not configured.")
         st.stop()
+
+def logout():
+    st.session_state.authenticated = False
+    st.rerun()

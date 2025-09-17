@@ -32,5 +32,6 @@ if submitted:
     ok, payload = insert_transaction(data)
     if ok:
         st.success(f"Transaction inserted for {time_label}.")
+        st.rerun()
     else:
         st.error("Failed to insert transaction.")

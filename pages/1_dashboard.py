@@ -170,6 +170,7 @@ st.altair_chart(
     .mark_bar()
     .encode(
         x=alt.X("Category:N", sort=None, title="Category"),
+        xOffset="Type:N",
         y=alt.Y("Amount:Q", title="Amount"),
         color=alt.Color("Type:N", scale=color_scale, legend=alt.Legend(title="Type")),
         tooltip=["Category", "Type", alt.Tooltip("Amount:Q", format=",.2f")],
@@ -179,6 +180,17 @@ st.altair_chart(
 )
 
 # ----------------- Drilldown -----------------
+st.subheader("Overview by category")
+
+overview_df = merged[["category", "expense", "income", "net_spending", "monthly_budget"]].copy()
+overview_df = overview_df.rename(columns={
+    "category": "Category",
+    "expense": "Total Expense",
+    "income": "Total Income",
+    "net_spending": "Net Spending",
+    "monthly_budget": "Budget"
+})
+st.dataframe(overview_df, use_container_width=True)
 st.subheader("Top 3 costs and incomes")
 
 all_categories = sorted(DF["category"].dropna().unique().tolist())
