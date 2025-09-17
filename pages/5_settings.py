@@ -142,3 +142,9 @@ if st.button("Save financial year start", type="primary"):
 
 # Note: We intentionally omit Reporting Window / Fiscal Year UI here to keep the page minimal.
 # You can still keep `date_start` / `date_end` / `fy_*` columns in the DB for future use.
+
+
+if st.session_state.get("authenticated"):
+    if st.button("Logout"):
+        from lib.auth import logout
+        logout()

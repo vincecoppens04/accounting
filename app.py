@@ -10,3 +10,8 @@ st.write("Use the navigation at the top of the sidebar to switch between pages."
 st.info(
     "This is the home page."
 )
+
+if st.session_state.get("authenticated"):
+    if st.button("Logout"):
+        from lib.auth import logout
+        logout()
