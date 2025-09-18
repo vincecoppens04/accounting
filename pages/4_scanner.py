@@ -103,3 +103,4 @@ if go_button and uploaded_pdf:
 
         if any(st.session_state.get(f"saved_{i}", False) for i in range(len(classified_df))):
             st.rerun()
+            
