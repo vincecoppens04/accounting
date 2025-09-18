@@ -134,3 +134,12 @@ def delete_transactions(ids: list[str]) -> int:
         return len(res.data) if getattr(res, "data", None) else 0
     except Exception:
         return 0
+
+# ---------- Scanner context ----------
+
+def fetch_scanner_context() -> str:
+    settings = fetch_settings()
+    return settings.get("scanner_context", "")
+
+def update_scanner_context(new_context: str):
+    update_settings({"scanner_context": new_context})
