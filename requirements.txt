@@ -5,3 +5,4 @@ postgrest
 altair
 python-dotenv
 supabase
+pdfplumber
