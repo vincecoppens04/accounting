@@ -88,8 +88,6 @@ def fetch_transactions():
     return res.data or []
 
 # --- Transaction helpers ---
-import pandas as pd
-
 def upsert_transactions(df: pd.DataFrame) -> tuple[int, int]:
     """Upsert existing rows (with id) and insert new rows (without id). Returns (upserted_or_updated, inserted)."""
     sb = get_client()

@@ -1,9 +1,8 @@
-from lib.auth import authenticate
+from lib.auth import authenticate, logout
 authenticate()
 
 import base64
 import os
-import hmac
 import hashlib
 from typing import Optional
 
@@ -146,5 +145,4 @@ if st.button("Save financial year start", type="primary"):
 
 if st.session_state.get("authenticated"):
     if st.button("Logout"):
-        from lib.auth import logout
         logout()
