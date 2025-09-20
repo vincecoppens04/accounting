@@ -3,7 +3,7 @@ from lib.auth import authenticate
 from lib.db import fetch_scanner_context, update_scanner_context, fetch_categories, insert_transaction
 from lib.scanner_logic import classify_transactions
 import pandas as pd
-from datetime import datetime, date
+from datetime import date
 import time
 
 

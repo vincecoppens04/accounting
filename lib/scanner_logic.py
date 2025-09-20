@@ -90,8 +90,6 @@ def generate_transaction_dataframe(pdf_path) -> pd.DataFrame:
             except:
                 date_iso = None
             amt = float(amount_str.replace(".", "").replace(",", "."))
-            if sign == "-":
-                amt = -amt
             current = {
                 "trx_no": trx_no,
                 "date": date_iso,
@@ -155,9 +153,6 @@ def generate_transaction_dataframe(pdf_path) -> pd.DataFrame:
         })
 
     tx_df = pd.DataFrame(records)
-    output_name = f"transactions_extracted_{datetime.today().strftime('%Y%m%d')}.csv"
-    tx_df.to_csv(output_name, index=False)
-    print(f"✅ Extracted {len(tx_df)} transactions → saved to {output_name}")
     tx_df.head(20)
 
     return tx_df

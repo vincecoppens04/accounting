@@ -1,5 +1,5 @@
 import streamlit as st
-from lib.auth import authenticate
+from lib.auth import authenticate, logout
 authenticate()
 
 st.set_page_config(page_title="Investia – Finance", page_icon="💷", layout="wide")
@@ -13,5 +13,4 @@ st.info(
 
 if st.session_state.get("authenticated"):
     if st.button("Logout"):
-        from lib.auth import logout
         logout()
