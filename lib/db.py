@@ -13,7 +13,7 @@ def get_client():
 def fetch_categories() -> pd.DataFrame:
     sb = get_client()
     try:
-        res = sb.table("categories").select("name, monthly_budget").order("name").execute()
+        res = sb.table("accounting_categories").select("name, monthly_budget").order("name").execute()
         if getattr(res, "status_code", 200) == 200 and res.data:
             return pd.DataFrame(res.data)
     except Exception:
@@ -38,9 +38,9 @@ def upsert_categories(df: pd.DataFrame) -> int:
     new_rows = clean[~clean["name"].isin(existing_set)].to_dict(orient="records")
 
     if updated:
-        sb.table("categories").upsert(updated, on_conflict="name").execute()
+        sb.table("accounting_categories").upsert(updated, on_conflict="name").execute()
     if new_rows:
-        sb.table("categories").insert(new_rows).execute()
+        sb.table("accounting_categories").insert(new_rows).execute()
 
     return len(updated) + len(new_rows)
 
@@ -50,7 +50,7 @@ def delete_categories(names: list[str]) -> int:
         return 0
     sb = get_client()
     # Supabase supports .in_(column, values)
-    res = sb.table("categories").delete().in_("name", names).execute()
+    res = sb.table("accounting_categories").delete().in_("name", names).execute()
     try:
         return len(res.data) if getattr(res, "data", None) else 0
     except Exception:
@@ -60,23 +60,23 @@ def delete_categories(names: list[str]) -> int:
 
 def fetch_settings() -> dict:
     sb = get_client()
-    res = sb.table("settings").select("*").eq("id", 1).maybe_single().execute()
+    res = sb.table("accounting_settings").select("*").eq("id", 1).maybe_single().execute()
     data = res.data or {}
     if not data:
-        sb.table("settings").insert({"id": 1}).execute()
+        sb.table("accounting_settings").insert({"id": 1}).execute()
         data = {"id": 1}
     return data
 
 def update_settings(payload: dict):
     sb = get_client()
-    sb.table("settings").upsert({"id": 1, **payload}).execute()
+    sb.table("accounting_settings").upsert({"id": 1, **payload}).execute()
 
 # ---------- Transactions ----------
 
 def insert_transaction(row: dict) -> tuple[bool, object]:
     sb = get_client()
     try:
-        res = sb.table("transactions").insert(row).execute()
+        res = sb.table("accounting_transactions").insert(row).execute()
         ok = bool(getattr(res, "data", None))
         return ok, getattr(res, "data", None)
     except Exception as e:
@@ -84,7 +84,7 @@ def insert_transaction(row: dict) -> tuple[bool, object]:
 
 def fetch_transactions():
     sb = get_client()
-    res = sb.table("transactions").select("*").order("txn_date").execute()
+    res = sb.table("accounting_transactions").select("*").order("txn_date").execute()
     return res.data or []
 
 # --- Transaction helpers ---
@@ -114,10 +114,10 @@ def upsert_transactions(df: pd.DataFrame) -> tuple[int, int]:
     updated = 0
     inserted = 0
     if existing:
-        sb.table("transactions").upsert(existing, on_conflict="id").execute()
+        sb.table("accounting_transactions").upsert(existing, on_conflict="id").execute()
         updated = len(existing)
     if new_rows:
-        sb.table("transactions").insert(new_rows).execute()
+        sb.table("accounting_transactions").insert(new_rows).execute()
         inserted = len(new_rows)
     return updated, inserted
 
@@ -127,7 +127,7 @@ def delete_transactions(ids: list[str]) -> int:
     if not ids:
         return 0
     sb = get_client()
-    res = sb.table("transactions").delete().in_("id", ids).execute()
+    res = sb.table("accounting_transactions").delete().in_("id", ids).execute()
     try:
         return len(res.data) if getattr(res, "data", None) else 0
     except Exception:
