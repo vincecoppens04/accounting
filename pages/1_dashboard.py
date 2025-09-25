@@ -7,7 +7,7 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 import altair as alt
 
-from lib.db import fetch_transactions, fetch_settings, get_client, fetch_category_budgets
+from lib.db import fetch_transactions, fetch_settings, fetch_category_budgets
 
 st.set_page_config(page_title="Dashboard — Investia", page_icon="📊", layout="wide")
 st.title("Dashboard")
