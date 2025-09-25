@@ -20,6 +20,20 @@ def fetch_categories() -> pd.DataFrame:
         pass
     return pd.DataFrame({"name": ["Income"], "monthly_budget": [0]})
 
+def fetch_category_budgets() -> pd.DataFrame:
+    """Return DataFrame with columns: name, monthly_budget."""
+    try:
+        sb = get_client()
+        res = sb.table("accounting_categories").select("name, monthly_budget").order("name").execute()
+        df = pd.DataFrame(res.data or [])
+        if df.empty:
+            df = pd.DataFrame({"name": ["Income"], "monthly_budget": [0.0]})
+        if "monthly_budget" not in df.columns:
+            df["monthly_budget"] = 0.0
+        return df
+    except Exception:
+        return pd.DataFrame({"name": ["Income"], "monthly_budget": [0.0]})
+
 def upsert_categories(df: pd.DataFrame) -> int:
     sb = get_client()
     if df is None or df.empty:
