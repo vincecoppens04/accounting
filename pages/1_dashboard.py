@@ -7,7 +7,7 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 import altair as alt
 
-from lib.db import fetch_transactions, fetch_settings, get_client
+from lib.db import fetch_transactions, fetch_settings, get_client, fetch_category_budgets
 
 st.set_page_config(page_title="Dashboard — Investia", page_icon="📊", layout="wide")
 st.title("Dashboard")
@@ -50,21 +50,6 @@ def months_in_range(d1: date, d2: date) -> int:
         return int((p2 - p1).n) + 1 if d2 > d1 else 0
     except Exception:
         return 0
-
-
-def fetch_category_budgets() -> pd.DataFrame:
-    """Return DataFrame with columns: name, monthly_budget."""
-    try:
-        sb = get_client()
-        res = sb.table("categories").select("name, monthly_budget").order("name").execute()
-        df = pd.DataFrame(res.data or [])
-        if df.empty:
-            df = pd.DataFrame({"name": ["Income"], "monthly_budget": [0.0]})
-        if "monthly_budget" not in df.columns:
-            df["monthly_budget"] = 0.0
-        return df
-    except Exception:
-        return pd.DataFrame({"name": ["Income"], "monthly_budget": [0.0]})
 
 # ----------------- Time window -----------------
 settings = fetch_settings() or {}
