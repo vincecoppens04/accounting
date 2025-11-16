@@ -1,6 +1,6 @@
 import streamlit as st
 from lib.auth import authenticate
-from lib.db import fetch_scanner_context, update_scanner_context, fetch_categories, insert_transaction
+from lib.db import fetch_scanner_context, update_scanner_context, fetch_categories, fetch_budget_year_labels, get_budget_category_id, insert_transaction
 from lib.scanner_logic import classify_transactions
 import pandas as pd
 from datetime import date
@@ -18,6 +18,13 @@ st.markdown("Upload your **KBC PDF bank statement** and use the context below to
 # Upload box
 uploaded_pdf = st.file_uploader("Upload KBC PDF", type=["pdf"])
 
+# Mandatory year selection for correct category filtering
+year_labels = fetch_budget_year_labels()
+selected_year = st.selectbox("Select budget year for classification", year_labels, key="scanner_year")
+
+if selected_year == "":
+    st.warning("Please select a budget year.")
+    st.stop()
 
 # Context editor (linked to Supabase settings)
 st.subheader("Context for classification")
@@ -43,21 +50,20 @@ if go_button and uploaded_pdf:
     with status_placeholder:
         with st.spinner("Scanning and classifying transactions..."):
             time.sleep(1)
-            classified_df = classify_transactions(uploaded_pdf)
+            classified_df = classify_transactions(uploaded_pdf, selected_year)
             st.session_state.classified_df = classified_df
             st.session_state.uploaded_pdf = uploaded_pdf
 
 classified_df = st.session_state.get("classified_df")
 if classified_df is None and "uploaded_pdf" in st.session_state:
-    classified_df = classify_transactions(st.session_state.uploaded_pdf)
+    classified_df = classify_transactions(st.session_state.uploaded_pdf, selected_year)
     st.session_state.classified_df = classified_df
 
 if classified_df is not None:
 
     st.subheader("Scanned Transactions")
 
-    category_options_df = fetch_categories()
-    category_options = category_options_df["name"].tolist()
+    category_options = fetch_categories(selected_year)
 
     for i, row in classified_df.iterrows():
         if st.session_state.get(f"saved_{i}", False):
@@ -78,19 +84,22 @@ if classified_df is not None:
             description = st.text_input(f"Description", row.get("message", ""), key=f"desc_{i}")
             amount = st.number_input(f"Amount", value=row["amount_eur"], step=0.01, format="%.2f", key=f"amt_{i}")
             is_expense = st.radio(f"Type", ["Expense", "Income"], index=0 if row["direction"] == "expense" else 1, key=f"type_{i}") == "Expense"
-            currency = st.text_input(f"Currency", value="EUR", key=f"cur_{i}")
 
             col1, col2 = st.columns([1, 1])
             with col1:
                 if st.form_submit_button("Save"):
+                    category_id = get_budget_category_id(selected_year, category)
+
                     tx_data = {
                         "txn_date": tx_date.isoformat(),
+                        "budget_category_id": category_id,
                         "category": category,
                         "description": description,
                         "amount": amount,
                         "is_expense": is_expense,
                         "time_label": tx_date.strftime("%Y-%m"),
-                        "currency": currency
+                        "currency": 'EUR',
+                        "year_label": selected_year
                     }
                     with st.spinner("Saving..."):
                         ok, res = insert_transaction(tx_data)
