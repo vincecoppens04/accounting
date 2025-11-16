@@ -11,6 +11,8 @@ def get_client():
     key = st.secrets["SUPABASE_KEY"]
     return create_client(url, key)
 
+sb = get_client()
+
 def pbkdf2_hash_env(password: str) -> str:
     """Return PBKDF2-HMAC-SHA256 hash using base64 salt from env var SALT_B64."""
     salt_b64 = os.getenv("SALT_B64")
@@ -21,7 +23,6 @@ def pbkdf2_hash_env(password: str) -> str:
     return base64.b64encode(dk).decode("utf-8")
 
 def fetch_member(username: str):
-    sb = get_client()
     res = sb.table("authentication").select("username, name, email, is_admin, is_board, password").eq("username", username).maybe_single().execute()
     return res.data if getattr(res, "data", None) else None
 
@@ -36,75 +37,259 @@ def validate_member_credentials(username: str, password: str) -> tuple[str, dict
     stored = member.get("password")
     if not stored or not hmac.compare_digest(derived, stored):
         return "invalid", None
-    if not member.get("is_board", False):
+    if not (member.get("is_board", False) or member.get("is_admin", False)):
         return "no_priv", member
     return "ok", member
 
 # ---------- Categories ----------
+def fetch_transactions_with_categories(selected_year: str) -> pd.DataFrame:
+    rows = fetch_transactions()
+    if not rows:
+        st.info("No transactions yet.")
+        st.stop()
 
-def fetch_categories() -> pd.DataFrame:
-    sb = get_client()
+    # fetch transactions and filter on slected year
+    transaction_df = pd.DataFrame(rows)
+    transaction_df = transaction_df[transaction_df["year_label"] == selected_year]
+
+    categories_df = fetch_categories_df(selected_year)
+
+    # Join category names into the transactions dataframe
+    if not categories_df.empty and "budget_category_id" in transaction_df.columns:
+        full_df = transaction_df.merge(
+            categories_df[["id", "category_name"]],
+            how="left",
+            left_on="budget_category_id",
+            right_on="id",
+            suffixes=("", "_cat"),
+        )
+        full_df["category"] = full_df["category_name"].fillna("Uncategorized")
+        full_df = full_df.drop(columns=["id_cat", "category_name"])
+    else:
+        full_df = transaction_df.copy()
+        full_df["category"] = "Uncategorized"
+    return full_df
+
+def fetch_categories(year_label: str | None = None) -> list[str]:
+    """Return a list of category names from accounting_budget.
+
+    If year_label is provided, only categories for that year are returned.
+    """
     try:
-        res = sb.table("accounting_categories").select("name, monthly_budget").order("name").execute()
-        if getattr(res, "status_code", 200) == 200 and res.data:
-            return pd.DataFrame(res.data)
+        query = sb.table("accounting_budget").select("category_name, year_label")
+        if year_label:
+            query = query.eq("year_label", year_label)
+        res = query.order("category_name").execute()
+        rows = res.data or []
+        names = sorted({(r.get("category_name") or "").strip() for r in rows if r.get("category_name")})
+        return names
     except Exception:
-        pass
-    return pd.DataFrame({"name": ["Income"], "monthly_budget": [0]})
+        return ["Income"]
 
-def fetch_category_budgets() -> pd.DataFrame:
-    """Return DataFrame with columns: name, monthly_budget."""
+def fetch_categories_df(year_label: str | None = None) -> pd.DataFrame:
+    """Return a DataFrame of categories from accounting_budget.
+
+    If year_label is provided, only categories for that year are returned.
+    Columns: name, monthly_budget (if available)
+    """
     try:
-        sb = get_client()
-        res = sb.table("accounting_categories").select("name, monthly_budget").order("name").execute()
+        query = sb.table("accounting_budget").select("category_name, budget, year_label, id")
+        if year_label:
+            query = query.eq("year_label", year_label)
+        res = query.order("category_name").execute()
         df = pd.DataFrame(res.data or [])
         if df.empty:
-            df = pd.DataFrame({"name": ["Income"], "monthly_budget": [0.0]})
-        if "monthly_budget" not in df.columns:
-            df["monthly_budget"] = 0.0
-        return df
+            pass
+        else:
+            return df
     except Exception:
         return pd.DataFrame({"name": ["Income"], "monthly_budget": [0.0]})
 
-def upsert_categories(df: pd.DataFrame) -> int:
-    sb = get_client()
-    if df is None or df.empty:
-        return 0
-    clean = df.copy()
-    if "name" not in clean.columns:
-        return 0
-    clean["name"] = clean["name"].fillna("").astype(str).str.strip()
-    if "monthly_budget" in clean.columns:
-        clean["monthly_budget"] = pd.to_numeric(clean["monthly_budget"], errors="coerce").fillna(0.0)
-    # Keep only real DB columns to avoid PostgREST errors (e.g., original_name from UI)
-    allowed_cols = ["name", "monthly_budget"]
-    clean = clean[[c for c in allowed_cols if c in clean.columns]]
-    clean = clean[clean["name"] != ""]
-    existing_df = fetch_categories()
-    existing_set = set(existing_df["name"].astype(str).str.strip()) if not existing_df.empty else set()
 
-    updated = clean[clean["name"].isin(existing_set)].to_dict(orient="records")
-    new_rows = clean[~clean["name"].isin(existing_set)].to_dict(orient="records")
+# ---- Helper to get budget category id ----
+def get_budget_category_id(year_label: str, category_name: str) -> str | None:
+    """Return accounting_budget.id for the given year and category name, or None if not found."""
+    if not year_label or not category_name:
+        return None
+    res = (
+        sb.table("accounting_budget")
+        .select("id")
+        .eq("year_label", year_label)
+        .eq("category_name", category_name)
+        .maybe_single()
+        .execute()
+    )
+    data = getattr(res, "data", None) or {}
+    return data.get("id")
 
-    if updated:
-        sb.table("accounting_categories").upsert(updated, on_conflict="name").execute()
-    if new_rows:
-        sb.table("accounting_categories").insert(new_rows).execute()
+# ---------- Budget (new logic) ----------
 
-    return len(updated) + len(new_rows)
+# NOTE: New budgeting system uses two tables:
+# - accounting_budget_years (id, year_label, opening_cash, sort_order, created_at)
+# - accounting_budget        (id, year_label, category_name, budget_type, budget, created_at)
+# Categories are implicit: each row in accounting_budget *is* a category+amount.
 
-def delete_categories(names: list[str]) -> int:
-    """Delete categories by name. Returns count attempted (actual deletions may be fewer if FK constraints block)."""
-    if not names:
-        return 0
-    sb = get_client()
-    # Supabase supports .in_(column, values)
-    res = sb.table("accounting_categories").delete().in_("name", names).execute()
+# ---- Budget years ----
+
+def fetch_budget_years_df() -> pd.DataFrame:
+    """Return all budget years as a DataFrame sorted by sort_order then year_label.
+    Expected columns in DB: year_label, opening_cash, sort_order.
+    """
     try:
-        return len(res.data) if getattr(res, "data", None) else 0
+        res = (
+            sb.table("accounting_budget_years")
+            .select("id, year_label, opening_cash, sort_order, created_at")
+            .order("sort_order")
+            .order("year_label")
+            .execute()
+        )
+        df = pd.DataFrame(res.data or [])
+        if df.empty:
+            return pd.DataFrame(columns=["id", "year_label", "opening_cash", "sort_order", "created_at"])
+        return df
     except Exception:
-        return 0
+        # Fail soft: return empty frame so UI can handle no years
+        return pd.DataFrame(columns=["id", "year_label", "opening_cash", "sort_order", "created_at"])
 
+
+def fetch_budget_year_labels() -> list[str]:
+    """Return list of year_label values, sorted for use in dropdowns."""
+    df = fetch_budget_years_df()
+    if df.empty or "year_label" not in df.columns:
+        return []
+    return [""] + df["year_label"].astype(str).tolist()
+
+
+def get_opening_cash(year_label: str) -> float:
+    """Return opening_cash for a given year_label (0.0 if missing)."""
+    if not year_label:
+        return 0.0
+    try:
+        res = (
+            sb.table("accounting_budget_years")
+            .select("opening_cash")
+            .eq("year_label", year_label)
+            .maybe_single()
+            .execute()
+        )
+        data = getattr(res, "data", None) or {}
+        return float(data.get("opening_cash", 0.0))
+    except Exception:
+        return 0.0
+
+
+def update_opening_cash(year_label: str, amount: float) -> None:
+    """Update opening_cash for a given year_label. No-op if year_label is empty.
+    Assumes the row already exists in accounting_budget_years.
+    """
+    if not year_label:
+        return
+    try:
+        amount_val = float(amount)
+    except Exception:
+        amount_val = 0.0
+    sb.table("accounting_budget_years").update({"opening_cash": amount_val}).eq("year_label", year_label).execute()
+
+
+# ---- Budget entries (categories + amounts) ----
+
+# We treat each row in accounting_budget as a category for a given year and type.
+# Fields used: year_label, category_name, budget_type, budget.
+
+
+def fetch_budget_entries(year_label: str) -> pd.DataFrame:
+    """Return all budget entries for a given year_label.
+    Columns: id, year_label, category_name, budget_type, budget.
+    """
+    if not year_label:
+        return pd.DataFrame(columns=["id", "year_label", "category_name", "budget_type", "budget"])
+    try:
+        res = (
+            sb.table("accounting_budget")
+            .select("id, year_label, category_name, budget_type, budget")
+            .eq("year_label", year_label)
+            .order("category_name")
+            .order("budget_type")
+            .execute()
+        )
+        df = pd.DataFrame(res.data or [])
+        if df.empty:
+            return pd.DataFrame(columns=["id", "year_label", "category_name", "budget_type", "budget"])
+        # Normalise types
+        if "budget" in df.columns:
+            df["budget"] = pd.to_numeric(df["budget"], errors="coerce").fillna(0.0)
+        return df
+    except Exception:
+        return pd.DataFrame(columns=["id", "year_label", "category_name", "budget_type", "budget"])
+
+
+def fetch_budget_entries_for_type(year_label: str, budget_type: str) -> pd.DataFrame:
+    """Return budget entries filtered by year and budget_type."""
+    df = fetch_budget_entries(year_label)
+    if df.empty:
+        return df
+    if "budget_type" not in df.columns:
+        return df
+    return df[df["budget_type"] == budget_type].reset_index(drop=True)
+
+
+def add_budget_category(year_label: str, name: str, budget_type: str, budget: float = 0.0) -> None:
+    """Create a new accounting_budget row for (year, category, type).
+    Duplicate protection is delegated to the DB unique constraint.
+    """
+    if not year_label or not name:
+        return
+    try:
+        budget_val = float(budget)
+    except Exception:
+        budget_val = 0.0
+    payload = {
+        "year_label": year_label,
+        "category_name": name.strip(),
+        "budget_type": budget_type,
+        "budget": budget_val,
+    }
+    sb.table("accounting_budget").insert(payload).execute()
+
+
+def delete_budget_category(year_label: str, name: str, budget_type: str | None = None) -> None:
+    """Delete budget rows for a given category.
+    If budget_type is None, deletes all types for that (year, name).
+    """
+    if not year_label or not name:
+        return
+    q = sb.table("accounting_budget").delete().eq("year_label", year_label).eq("category_name", name)
+    if budget_type:
+        q = q.eq("budget_type", budget_type)
+    q.execute()
+
+
+# ---- Simplified single function to update name, type, and budget in one step ----
+def update_budget_category(year_label: str, old_name: str, new_name: str, old_type: str, new_type: str, amount: float) -> None:
+    """Simplified single function to update name, type, and budget in one step."""
+    if not year_label or not old_name or not new_name or not old_type or not new_type:
+        return
+    try:
+        amount_val = float(amount)
+    except Exception:
+        amount_val = 0.0
+
+    # 1. Update name if changed
+    if new_name != old_name:
+        sb.table("accounting_budget").update({"category_name": new_name}).eq("year_label", year_label).eq("category_name", old_name).execute()
+        target_name = new_name
+    else:
+        target_name = old_name
+
+    # 2. Update type if changed
+    if new_type != old_type:
+        sb.table("accounting_budget").update({"budget_type": new_type}).eq("year_label", year_label).eq("category_name", target_name).eq("budget_type", old_type).execute()
+        target_type = new_type
+    else:
+        target_type = old_type
+
+    # 3. Always update the amount
+    sb.table("accounting_budget").update({"budget": amount_val}).eq("year_label", year_label).eq("category_name", target_name).eq("budget_type", target_type).execute()
 
 # ---------- Settings (single row id=1) ----------
 def fetch_settings() -> dict:
@@ -112,7 +297,6 @@ def fetch_settings() -> dict:
     Note: We keep only generic app settings here (e.g., fiscal year start).
     Password-related fields are deprecated and unused by the app UI.
     """
-    sb = get_client()
     res = sb.table("accounting_settings").select("*").eq("id", 1).maybe_single().execute()
     data = res.data or {}
     if not data:
@@ -122,13 +306,12 @@ def fetch_settings() -> dict:
 
 def update_settings(payload: dict):
     """Upsert settings into the single-row table (id=1)."""
-    sb = get_client()
     sb.table("accounting_settings").upsert({"id": 1, **payload}).execute()
 
 # ---------- Transactions ----------
 
 def insert_transaction(row: dict) -> tuple[bool, object]:
-    sb = get_client()
+    """Insert a transaction row as-is into accounting_transactions."""
     try:
         res = sb.table("accounting_transactions").insert(row).execute()
         ok = bool(getattr(res, "data", None))
@@ -136,51 +319,40 @@ def insert_transaction(row: dict) -> tuple[bool, object]:
     except Exception as e:
         return False, str(e)
 
+# DASHBOARD
 def fetch_transactions():
-    sb = get_client()
     res = sb.table("accounting_transactions").select("*").order("txn_date").execute()
     return res.data or []
+
 
 # --- Transaction helpers ---
 def upsert_transactions(df: pd.DataFrame) -> tuple[int, int]:
     """Upsert existing rows (with id) and insert new rows (without id). Returns (upserted_or_updated, inserted)."""
-    sb = get_client()
     if df is None or df.empty:
         return 0, 0
     clean = df.copy()
+    # Ensure txn_date is a JSON-serialisable ISO string
+    if "txn_date" in clean.columns:
+        import pandas as _pd
+
+        def _norm_date(v):
+            try:
+                if v is None or (isinstance(v, float) and _pd.isna(v)):
+                    return None
+                return _pd.to_datetime(v).strftime("%Y-%m-%d")
+            except Exception:
+                return None
+
+        clean["txn_date"] = clean["txn_date"].apply(_norm_date)
     # Normalise keys
     for col in ["txn_date", "time_label", "category", "description", "amount", "is_expense", "currency", "id"]:
         if col not in clean.columns:
             clean[col] = None
-    # Ensure time_label from txn_date if missing
-    def compute_label(v):
-        try:
-            import pandas as _pd
-            return _pd.to_datetime(v).strftime("%Y-%m") if _pd.notna(v) else None
-        except Exception:
-            return None
-    clean["time_label"] = clean.apply(lambda r: r["time_label"] or compute_label(r["txn_date"]), axis=1)
-
-    # Split existing vs new
-    existing = clean[clean["id"].notna()].to_dict(orient="records")
-    new_rows = clean[clean["id"].isna()].drop(columns=["id"]).to_dict(orient="records")
-
-    updated = 0
-    inserted = 0
-    if existing:
-        sb.table("accounting_transactions").upsert(existing, on_conflict="id").execute()
-        updated = len(existing)
-    if new_rows:
-        sb.table("accounting_transactions").insert(new_rows).execute()
-        inserted = len(new_rows)
-    return updated, inserted
-
-
+    
 def delete_transactions(ids: list[str]) -> int:
     """Delete transactions by uuid id. Returns number deleted."""
     if not ids:
         return 0
-    sb = get_client()
     res = sb.table("accounting_transactions").delete().in_("id", ids).execute()
     try:
         return len(res.data) if getattr(res, "data", None) else 0
@@ -200,7 +372,6 @@ def update_scanner_context(new_context: str):
 import datetime as _dt
 from typing import List, Dict, Optional
 
-
 def _current_username() -> Optional[str]:
     """Best-effort lookup of the logged-in member's username from session state.
     lib.auth.authenticate() typically stores a member dict under one of these keys.
@@ -216,7 +387,6 @@ def get_members() -> List[Dict[str, str]]:
     """Return a lightweight member list for dropdowns and future features.
     Each item: { username, name, email }
     """
-    sb = get_client()
     res = sb.table("authentication").select("username, name, email").order("name").execute()
     rows = res.data or []
     # Normalise & ensure keys exist
@@ -229,9 +399,7 @@ def get_members() -> List[Dict[str, str]]:
         })
     return out
 
-
 # ---- Amounts Due CRUD ----
-
 def _parse_date(v) -> Optional[_dt.date]:
     if v is None:
         return None
@@ -247,7 +415,6 @@ def _parse_date(v) -> Optional[_dt.date]:
             return None
     return None
 
-
 def _parse_datetime(v) -> Optional[_dt.datetime]:
     if v is None:
         return None
@@ -261,12 +428,10 @@ def _parse_datetime(v) -> Optional[_dt.datetime]:
             return None
     return None
 
-
 def list_amounts_due() -> List[Dict]:
     """Fetch open amounts, enrich with member_name for UI convenience.
     Returns items with keys: id, member_username, member_name, amount, created_at (datetime), due_date (date), note
     """
-    sb = get_client()
     res = sb.table("amounts_due").select("id, member_username, amount, created_at, due_date, note").order("due_date").execute()
     rows = res.data or []
     # Build mapping username -> name
@@ -284,7 +449,6 @@ def list_amounts_due() -> List[Dict]:
         })
     return out
 
-
 def create_amount_due(member_username: str, amount: float, due_date: _dt.date, note: Optional[str] = None) -> None:
     """Insert a new amount-due row. The creator is captured from session state."""
     if not member_username:
@@ -300,7 +464,6 @@ def create_amount_due(member_username: str, amount: float, due_date: _dt.date, n
     if not creator:
         raise RuntimeError("No logged-in user found to record 'inserted_by_username'.")
 
-    sb = get_client()
     due = _parse_date(due_date) or (_dt.date.today() + _dt.timedelta(days=7))
     payload = {
         "member_username": member_username,
@@ -312,7 +475,6 @@ def create_amount_due(member_username: str, amount: float, due_date: _dt.date, n
     }
     sb.table("amounts_due").insert(payload).execute()
 
-
 def update_amount_due(id: str, amount: float, due_date: _dt.date, note: Optional[str] = None) -> None:
     if not id:
         raise ValueError("id is required")
@@ -323,7 +485,6 @@ def update_amount_due(id: str, amount: float, due_date: _dt.date, note: Optional
     if amount <= 0:
         raise ValueError("amount must be > 0")
 
-    sb = get_client()
     due = _parse_date(due_date) or (_dt.date.today() + _dt.timedelta(days=7))
     payload = {
         "amount": amount,
@@ -332,34 +493,7 @@ def update_amount_due(id: str, amount: float, due_date: _dt.date, note: Optional
     }
     sb.table("amounts_due").update(payload).eq("id", id).execute()
 
-
 def delete_amount_due(id: str) -> None:
     if not id:
         return
-    sb = get_client()
     sb.table("amounts_due").delete().eq("id", id).execute()
-
-
-# ---- Convenience: totals for member banner ----
-
-def fetch_member_due_total(member_username: str) -> float:
-    """Return the sum currently due for a member (0.0 if none)."""
-    if not member_username:
-        return 0.0
-    sb = get_client()
-    res = sb.rpc(
-        "sql",
-        params={
-            "query": (
-                "select coalesce(sum(amount), 0) as total from amounts_due where member_username = %(u)s;",
-                {"u": member_username},
-            )
-        },
-    ) if False else None  # keep simple; do it client-side for portability
-
-    # Fallback: compute from list_amounts_due to avoid DB RPC dependency
-    total = 0.0
-    for r in list_amounts_due():
-        if r.get("member_username") == member_username:
-            total += float(r.get("amount") or 0.0)
-    return float(total)

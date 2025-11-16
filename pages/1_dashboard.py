@@ -7,40 +7,12 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 import altair as alt
 
-from lib.db import fetch_transactions, fetch_settings, fetch_category_budgets
+from lib.db import fetch_budget_year_labels, fetch_settings, fetch_categories_df, fetch_transactions_with_categories
 
 st.set_page_config(page_title="Dashboard — Investia", page_icon="📊", layout="wide")
 st.title("Dashboard")
 
 # ----------------- Helpers -----------------
-
-def current_fy_window(fy_month: int, fy_day: int) -> tuple[date, date]:
-    today = date.today()
-    try:
-        start_this_year = date(
-            today.year,
-            fy_month,
-            min(fy_day, 28 if fy_month == 2 else 30 if fy_month in (4, 6, 9, 11) else 31),
-        )
-    except Exception:
-        start_this_year = date(today.year, 1, 1)
-    if today >= start_this_year:
-        start = start_this_year
-        end = date(
-            today.year + 1,
-            fy_month,
-            min(fy_day, 28 if fy_month == 2 else 30 if fy_month in (4, 6, 9, 11) else 31),
-        )
-    else:
-        start = date(
-            today.year - 1,
-            fy_month,
-            min(fy_day, 28 if fy_month == 2 else 30 if fy_month in (4, 6, 9, 11) else 31),
-        )
-        end = start_this_year
-    return start, end  # [start, end)
-
-
 def months_in_range(d1: date, d2: date) -> int:
     if d2 <= d1:
         return 0
@@ -51,11 +23,34 @@ def months_in_range(d1: date, d2: date) -> int:
     except Exception:
         return 0
 
+
+def fy_window_from_label(year_label: str, fy_month: int, fy_day: int) -> tuple[date, date]:
+    """
+    Parse a year label like '2025-26' and compute the financial year range.
+    Returns (start_date, end_date) where end_date is exclusive.
+    E.g. '2025-26' with fy_month=10, fy_day=1 → (2025-10-01, 2026-09-30)
+    """
+    parts = year_label.split("-")
+    start_year = int(parts[0])
+    
+    start = date(start_year, fy_month, fy_day)
+    end = date(start_year+1, fy_month, fy_day)
+    return start, end
+
+    
+# ----------------- Select budget year -----------------
+year_labels = fetch_budget_year_labels()
+selected_year = st.selectbox("Budget year", year_labels, index=0)
+
+if selected_year == "":
+    st.warning("Please select a budget year.")
+    st.stop()
+
 # ----------------- Time window -----------------
 settings = fetch_settings() or {}
 fy_m = int(settings.get("fy_start_month") or 1)
 fy_d = int(settings.get("fy_start_day") or 1)
-start_default, end_default = current_fy_window(fy_m, fy_d)
+start_default, end_default = fy_window_from_label(selected_year, fy_m, fy_d)
 
 with st.expander("Time window", expanded=True):
     c1, c2 = st.columns(2)
@@ -63,28 +58,30 @@ with st.expander("Time window", expanded=True):
         start_date = st.date_input("From", value=start_default)
     with c2:
         end_date = st.date_input("To (exclusive)", value=end_default)
-    st.caption(f"Default = current financial year from settings (start {fy_d:02d}-{fy_m:02d}).")
+    st.caption(f"Default = financial year from selected year (start {fy_d:02d}-{fy_m:02d}).")
 
 # ----------------- Data -----------------
-rows = fetch_transactions() or []
-if not rows:
+full_df = fetch_transactions_with_categories(selected_year)
+
+if not full_df.size:
     st.info("No transactions yet.")
     st.stop()
 
-DF = pd.DataFrame(rows)
-DF["txn_date"] = pd.to_datetime(DF["txn_date"], errors="coerce").dt.date
-DF = DF[(DF["txn_date"] >= start_date) & (DF["txn_date"] < end_date)]
+# Filter by date range
+DF = full_df[
+    (pd.to_datetime(full_df["txn_date"], errors="coerce").dt.date >= start_date) &
+    (pd.to_datetime(full_df["txn_date"], errors="coerce").dt.date < end_date)
+].copy()
+
 if DF.empty:
-    st.info("No transactions in the selected period.")
+    st.info("No transactions in the selected date range.")
     st.stop()
 
-# Normalised fields
-DF["amount"] = pd.to_numeric(DF["amount"], errors="coerce").fillna(0.0)
-DF["is_expense"] = DF["is_expense"].astype(bool)
-DF["expense"] = DF.apply(lambda r: float(r["amount"]) if r["is_expense"] else 0.0, axis=1)
-DF["income"] = DF.apply(lambda r: float(r["amount"]) if not r["is_expense"] else 0.0, axis=1)
 
-# ----------------- Charts: Expense / Income per category -----------------
+DF["expense"] = DF.apply(lambda r: r["amount"] if r["is_expense"] else 0.0, axis=1)
+DF["income"] = DF.apply(lambda r: r["amount"] if not r["is_expense"] else 0.0, axis=1)
+
+# Compute expenses and income per category
 exp_by_cat = DF.groupby("category", as_index=False)["expense"].sum().sort_values("expense", ascending=False)
 inc_by_cat = DF.groupby("category", as_index=False)["income"].sum().sort_values("income", ascending=False)
 
@@ -115,7 +112,29 @@ with c2:
     )
 
 # ----------------- Net spending vs budget (prorated) -----------------
-cat_bud = fetch_category_budgets()
+# Fetch categories/budgets and normalise to the expected shape for merging.
+# Expected columns: 'name' and 'monthly_budget'
+cat_bud = fetch_categories_df(selected_year)
+if cat_bud is None or (isinstance(cat_bud, pd.DataFrame) and cat_bud.empty):
+    cat_bud = pd.DataFrame(columns=["name", "monthly_budget"])
+else:
+    # Rename common category name columns to 'name'
+    if "name" not in cat_bud.columns:
+        if "category_name" in cat_bud.columns:
+            cat_bud = cat_bud.rename(columns={"category_name": "name"})
+        elif "category" in cat_bud.columns:
+            cat_bud = cat_bud.rename(columns={"category": "name"})
+
+    # Create/normalise 'monthly_budget' from 'budget' if present.
+    if "monthly_budget" not in cat_bud.columns:
+        if "budget" in cat_bud.columns:
+            cat_bud["monthly_budget"] = pd.to_numeric(cat_bud["budget"], errors="coerce").fillna(0.0)
+        else:
+            cat_bud["monthly_budget"] = 0.0
+
+    # Keep only the two columns we need for merging (preserve order)
+    cat_bud = cat_bud[["name", "monthly_budget"]].copy()
+
 months = months_in_range(start_date, end_date)
 grouped = DF.groupby("category", as_index=False).agg({
     "expense": "sum",

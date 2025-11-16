@@ -158,7 +158,7 @@ def generate_transaction_dataframe(pdf_path) -> pd.DataFrame:
     return tx_df
 
 
-def transaction_categorisation(tx_df1) -> pd.DataFrame:
+def transaction_categorisation(tx_df1, year_label: str) -> pd.DataFrame:
     # === CONFIG ===
 
     API_KEY = os.getenv("GEMINI_API_KEY")
@@ -169,7 +169,7 @@ def transaction_categorisation(tx_df1) -> pd.DataFrame:
 
     ENDPOINT = f"{BASE_URL}?key={API_KEY}"
 
-    VALID_CATEGORIES = fetch_categories()["name"].tolist()
+    VALID_CATEGORIES = fetch_categories(year_label)
     print("Valid categories:", VALID_CATEGORIES)
 
     # === Editable categorisation context (update freely) ===
@@ -230,7 +230,7 @@ def transaction_categorisation(tx_df1) -> pd.DataFrame:
     print(tx_df1[["date", "amount_eur", "message", "category"]].head(10))
     return tx_df1
 
-def classify_transactions(pdf) -> pd.DataFrame:
+def classify_transactions(pdf, year_label: str) -> pd.DataFrame:
     transaction_dataframe = generate_transaction_dataframe(pdf)
-    categorized_df = transaction_categorisation(transaction_dataframe)
+    categorized_df = transaction_categorisation(transaction_dataframe, year_label)
     return categorized_df
