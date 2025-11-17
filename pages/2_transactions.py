@@ -7,22 +7,17 @@ import pandas as pd
 from lib.db import (
     upsert_transactions,
     delete_transactions,
-    fetch_budget_year_labels,
-    fetch_transactions_with_categories
+    fetch_transactions_with_categories,
+    select_budget_year
 )
 
 st.set_page_config(page_title="Transactions — Investia", page_icon="🗃️", layout="wide")
 st.title("Transactions")
 
-year_labels = fetch_budget_year_labels()
-selected_year = st.selectbox("Budget year", year_labels, index=0)
+# ----------------- Budget Year Selection -----------------
+selected_year = select_budget_year()
 
-if selected_year == "":
-    st.warning("Please select a budget year.")
-    st.stop()
-
- # Load full rows (including id) and live category names joined from the budget table
-
+# Load full rows (including id) and live category names joined from the budget table
 full_df = fetch_transactions_with_categories(selected_year)
 
 # -------------------------

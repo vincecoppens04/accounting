@@ -4,7 +4,7 @@ authenticate()
 import streamlit as st
 from datetime import date
 from time import sleep
-from lib.db import fetch_categories, insert_transaction, fetch_budget_year_labels, get_budget_category_id
+from lib.db import fetch_categories, insert_transaction, select_budget_year, get_budget_category_id
 
 st.set_page_config(page_title="Transaction — Investia", layout="wide")
 st.title("Insert Transaction")
@@ -12,12 +12,8 @@ st.title("Insert Transaction")
  
 tx_date = st.date_input("Date", value=date.today())
 
-years = fetch_budget_year_labels()
-year_label = st.selectbox("Budget year", years)
-
-if year_label == "":
-    st.warning("Please select a budget year.")
-    st.stop()
+# ----------------- Budget Year Selection -----------------
+year_label = select_budget_year()
 
 categories = fetch_categories(year_label)
 category = st.selectbox("Category", categories)

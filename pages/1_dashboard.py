@@ -7,7 +7,7 @@ from datetime import date
 from dateutil.relativedelta import relativedelta
 import altair as alt
 
-from lib.db import fetch_budget_year_labels, fetch_settings, fetch_categories_df, fetch_transactions_with_categories
+from lib.db import select_budget_year, fetch_settings, fetch_categories_df, fetch_transactions_with_categories
 
 st.set_page_config(page_title="Dashboard — Investia", page_icon="📊", layout="wide")
 st.title("Dashboard")
@@ -37,14 +37,8 @@ def fy_window_from_label(year_label: str, fy_month: int, fy_day: int) -> tuple[d
     end = date(start_year+1, fy_month, fy_day)
     return start, end
 
-    
-# ----------------- Select budget year -----------------
-year_labels = fetch_budget_year_labels()
-selected_year = st.selectbox("Budget year", year_labels, index=0)
-
-if selected_year == "":
-    st.warning("Please select a budget year.")
-    st.stop()
+# ----------------- Budget Year Selection -----------------
+selected_year = select_budget_year()
 
 # ----------------- Time window -----------------
 settings = fetch_settings() or {}

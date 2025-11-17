@@ -12,6 +12,7 @@ from lib.db import (
     add_budget_category,
     delete_budget_category,
     update_budget_category,
+    select_budget_year
 )
 
 authenticate()
@@ -27,15 +28,8 @@ if not years:
 
 col_year_select, _ = st.columns([2, 1])
 with col_year_select:
-    current_year = st.selectbox(
-        "Select budget year",
-        years,
-        key="budget_year_select",
-    )
-
-if current_year == "":
-    st.warning("Please select a budget year.")
-    st.stop()
+    # ----------------- Budget Year Selection -----------------
+    current_year = select_budget_year()
 
 # --- Constants ---
 CATEGORY_TYPES = ["income", "year", "semester1", "semester2"]
