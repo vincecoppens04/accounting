@@ -497,3 +497,29 @@ def delete_amount_due(id: str) -> None:
     if not id:
         return
     sb.table("amounts_due").delete().eq("id", id).execute()
+
+# ----------------- Budget Year Selection -----------------
+def select_budget_year():
+    year_labels = fetch_budget_year_labels()
+        # Check if we already have a year stored in the session
+    previously_selected = st.session_state.get("selected_budget_year", "")
+        # Decide which index to use as default:
+    # - If a previously selected year exists and is still in the options, use that.
+    # - Otherwise fall back to the first option (index 0), which can be an empty option.
+    if previously_selected in year_labels:
+        default_index = year_labels.index(previously_selected)
+    else:
+        default_index = 0
+    
+    selected_year = st.selectbox(
+        "Budget year",
+        year_labels,
+        index=default_index,
+        key="selected_budget_year_select",
+    )
+        # Store the selection in session state so it can be reused on other pages
+    st.session_state["selected_budget_year"] = selected_year
+    if selected_year == "":
+        st.warning("Please select a budget year.")
+        st.stop()
+    return selected_year

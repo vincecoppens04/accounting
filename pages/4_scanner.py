@@ -1,6 +1,6 @@
 import streamlit as st
 from lib.auth import authenticate
-from lib.db import fetch_scanner_context, update_scanner_context, fetch_categories, fetch_budget_year_labels, get_budget_category_id, insert_transaction
+from lib.db import fetch_scanner_context, update_scanner_context, fetch_categories, select_budget_year, get_budget_category_id, insert_transaction
 from lib.scanner_logic import classify_transactions
 import pandas as pd
 from datetime import date
@@ -18,13 +18,8 @@ st.markdown("Upload your **KBC PDF bank statement** and use the context below to
 # Upload box
 uploaded_pdf = st.file_uploader("Upload KBC PDF", type=["pdf"])
 
-# Mandatory year selection for correct category filtering
-year_labels = fetch_budget_year_labels()
-selected_year = st.selectbox("Select budget year for classification", year_labels, key="scanner_year")
-
-if selected_year == "":
-    st.warning("Please select a budget year.")
-    st.stop()
+# ----------------- Budget Year Selection -----------------
+selected_year = select_budget_year()
 
 # Context editor (linked to Supabase settings)
 st.subheader("Context for classification")
