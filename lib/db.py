@@ -3,6 +3,7 @@ from supabase import create_client
 import pandas as pd
 import os, base64, hashlib, hmac
 from dotenv import load_dotenv
+from datetime import datetime as dt
 load_dotenv()
 
 @st.cache_resource
@@ -523,3 +524,97 @@ def select_budget_year():
         st.warning("Please select a budget year.")
         st.stop()
     return selected_year
+
+def insert_working_capital_entry(
+    *,
+    kind: str,
+    book_year_label: str,
+    kind_detail: Optional[str],
+    amount: float,
+    entry_date: _dt.date,
+    inserted_by_username: str,
+    description: Optional[str] = None,
+    budget_category_id: Optional[str] = None,
+    number_of_pieces: Optional[int] = None,
+    member_username: Optional[str] = None,
+):
+    """Insert a generic working-capital row (AR / AP / Inventory)."""
+    entry_date_parsed = _parse_date(entry_date) or _dt.date.today()
+    payload = {
+        "kind": kind,
+        "book_year_label": book_year_label,
+        "kind_detail": kind_detail,
+        "amount": amount,
+        "entry_date": entry_date_parsed.isoformat(),
+        "inserted_by_username": inserted_by_username,
+        "description": description,
+        "budget_category_id": budget_category_id,
+        "number_of_pieces": number_of_pieces,
+        "member_username": member_username,
+    }
+
+    # Strip None-values to keep DB clean
+    payload = {k: v for k, v in payload.items() if v is not None}
+
+    return sb.table("accounting_working_capital").insert(payload).execute()
+
+def load_working_capital(
+    *,
+    book_year_label: Optional[str] = None,
+    kind: Optional[str] = None,
+) -> pd.DataFrame:
+    """Load whole table or a filtered subset."""
+
+    query = sb.table("accounting_working_capital").select("*")
+
+    if book_year_label is not None:
+        query = query.eq("book_year_label", book_year_label)
+    if kind is not None:
+        query = query.eq("kind", kind)
+
+    resp = query.execute()
+    rows = resp.data or []
+    return pd.DataFrame(rows)
+
+
+def delete_working_capital_entry(id: str) -> None:
+    """Delete a working-capital row (used to mark as fulfilled)."""
+    if not id:
+        return
+    sb.table("accounting_working_capital").delete().eq("id", id).execute()
+
+
+def update_working_capital_entry(
+    id: str,
+    *,
+    amount: Optional[float] = None,
+    description: Optional[str] = None,
+    kind_detail: Optional[str] = None,
+    budget_category_id: Optional[str] = None,
+    entry_date: Optional[_dt.date] = None,
+    number_of_pieces: Optional[int] = None,
+    member_username: Optional[str] = None,
+) -> None:
+    """Update one or more fields in the working-capital table."""
+    if not id:
+        return
+
+    payload = {
+        "amount": amount,
+        "description": description,
+        "kind_detail": kind_detail,
+        "budget_category_id": budget_category_id,
+        "number_of_pieces": number_of_pieces,
+        "member_username": member_username,
+    }
+
+    if entry_date is not None:
+        entry_date_parsed = _parse_date(entry_date) or _dt.date.today()
+        payload["entry_date"] = entry_date_parsed.isoformat()
+
+    # Keep only fields actually provided
+    payload = {k: v for k, v in payload.items() if v is not None}
+    if not payload:
+        return
+
+    sb.table("accounting_working_capital").update(payload).eq("id", id).execute()

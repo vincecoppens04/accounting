@@ -121,10 +121,32 @@ else:
             st.rerun()
 
     if do_delete:
-        delete_budget_category(current_year, selected_name)
-        st.success("Category deleted.")
-        sleep(1)
-        st.rerun()
+        try:
+            delete_budget_category(current_year, selected_name)
+        except Exception as e:
+            # Try to extract an error code (e.g. Postgres 23503 for FK violation)
+            err_code = None
+            # Some clients put details on the exception object
+            if hasattr(e, "code"):
+                err_code = getattr(e, "code", None)
+            # Others put the payload in args[0] as a dict
+            if err_code is None and e.args:
+                first_arg = e.args[0]
+                if isinstance(first_arg, dict):
+                    err_code = first_arg.get("code")
+
+            if err_code == "23503":
+                st.warning(
+                    "You cannot delete this category because there are still "
+                    "transactions linked to it. Please delete those transactions "
+                    "first and then try again."
+                )
+            else:
+                st.error(f"Error while deleting category: {e}")
+        else:
+            st.success("Category deleted.")
+            sleep(1)
+            st.rerun()
 
 st.markdown("---")
 
