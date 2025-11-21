@@ -123,6 +123,21 @@ def get_budget_category_id(year_label: str, category_name: str) -> str | None:
     data = getattr(res, "data", None) or {}
     return data.get("id")
 
+def get_budget_category_name(year_label: str, category_id: str) -> str | None:
+    """Return accounting_budget.id for the given year and category name, or None if not found."""
+    if not year_label or not category_id:
+        return None
+    res = (
+        sb.table("accounting_budget")
+        .select("category_name")
+        .eq("year_label", year_label)
+        .eq("id", category_id)
+        .maybe_single()
+        .execute()
+    )
+    data = getattr(res, "data", None) or {}
+    return data.get("category_name")
+
 # ---------- Budget (new logic) ----------
 
 # NOTE: New budgeting system uses two tables:
