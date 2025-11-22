@@ -213,9 +213,9 @@ with col2:
 st.divider()
 
 st.markdown("## Navigation")
-st.info("👈 Use the sidebar navigation to access different pages and start managing your finances!")
+st.info("Use the sidebar navigation to access different pages and start managing your finances!")
 
 if st.session_state.get("authenticated"):
     st.divider()
-    if st.button("🚪 Logout"):
+    if st.button("Logout"):
         logout()
