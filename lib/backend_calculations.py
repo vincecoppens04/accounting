@@ -243,3 +243,28 @@ def calculate_cash_flow_evolution(year_label: str) -> pd.DataFrame:
     # Let's just return the daily balances.
     
     return daily_flow[["txn_date", "balance"]].rename(columns={"txn_date": "date"})
+
+
+def calculate_current_cash_position(year_label: str) -> float:
+    """
+    Calculate the current cash position based on the latest balance from cash flow evolution.
+    Returns the most recent balance value.
+    """
+    cash_flow_df = calculate_cash_flow_evolution(year_label)
+    
+    if cash_flow_df.empty:
+        return get_opening_cash(year_label)
+    
+    # Return the most recent balance
+    return float(cash_flow_df.iloc[-1]["balance"])
+
+
+def calculate_cash_position_with_nwc(year_label: str) -> float:
+    """
+    Calculate cash position with NWC.
+    Formula: Current Cash Position + NWC
+    """
+    current_cash = calculate_current_cash_position(year_label)
+    wc_metrics = calculate_working_capital_metrics(year_label)
+    
+    return current_cash + wc_metrics["nwc"]
