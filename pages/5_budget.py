@@ -2,6 +2,7 @@ from lib.auth import authenticate
 import streamlit as st
 import pandas as pd
 from time import sleep
+from lib.backend_calculations import calculate_budget_metrics
 
 from lib.db import (
     fetch_budget_year_labels,
@@ -12,7 +13,9 @@ from lib.db import (
     add_budget_category,
     delete_budget_category,
     update_budget_category,
-    select_budget_year
+    select_budget_year,
+    get_savings,
+    update_savings
 )
 
 authenticate()
@@ -30,6 +33,27 @@ col_year_select, _ = st.columns([2, 1])
 with col_year_select:
     # ----------------- Budget Year Selection -----------------
     current_year = select_budget_year()
+st.markdown("---")
+
+# --- Metrics ---
+metrics = calculate_budget_metrics(current_year)
+
+st.markdown("### Overview")
+m_col1, m_col2, m_col3 = st.columns(3)
+
+with m_col1:
+    st.metric("Cash position begin", f"€ {metrics['opening_cash']:,.2f}")
+    st.metric("Total income", f"€ {metrics['total_income']:,.2f}")
+
+with m_col2:
+    st.metric("Total expenses", f"€ {metrics['total_expenses_all']:,.2f}")
+    st.caption(f"Sem 1: € {metrics['total_expenses_sem1']:,.2f} | Sem 2: € {metrics['total_expenses_sem2']:,.2f} | Year: € {metrics['total_expenses_year']:,.2f}")
+
+with m_col3:
+    st.metric("Savings", f"€ {metrics['savings']:,.2f}")
+    st.metric("Free float", f"€ {metrics['free_float']:,.2f}", delta_color="normal")
+
+st.markdown("---")
 
 # --- Constants ---
 CATEGORY_TYPES = ["income", "year", "semester1", "semester2"]
@@ -163,8 +187,19 @@ with col_cash_save:
         sleep(1)
         st.rerun()
 
-st.markdown("---")
-
+# --- Savings ---
+current_savings = get_savings(current_year)
+with col_cash_input:
+    savings_val = st.number_input("Savings (stays on account)", value=float(current_savings), step=100.0)
+with col_cash_save:
+    st.write("") # spacer
+    st.write("") # spacer
+    if st.button("Save", key=f"save_savings_{current_year}"):
+        update_savings(current_year, float(savings_val))
+        st.success("Saved")
+        sleep(1)
+        st.rerun()
+st.divider()
 # --- Render section ---
 
 def section(title: str, btype: str) -> None:

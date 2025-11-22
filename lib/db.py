@@ -99,10 +99,8 @@ def fetch_categories_df(year_label: str | None = None) -> pd.DataFrame:
             query = query.eq("year_label", year_label)
         res = query.order("category_name").execute()
         df = pd.DataFrame(res.data or [])
-        if df.empty:
-            pass
-        else:
-            return df
+        df = pd.DataFrame(res.data or [])
+        return df
     except Exception:
         return pd.DataFrame({"name": ["Income"], "monthly_budget": [0.0]})
 
@@ -154,18 +152,18 @@ def fetch_budget_years_df() -> pd.DataFrame:
     try:
         res = (
             sb.table("accounting_budget_years")
-            .select("id, year_label, opening_cash, sort_order, created_at")
+            .select("id, year_label, opening_cash, savings, sort_order, created_at")
             .order("sort_order")
             .order("year_label")
             .execute()
         )
         df = pd.DataFrame(res.data or [])
         if df.empty:
-            return pd.DataFrame(columns=["id", "year_label", "opening_cash", "sort_order", "created_at"])
+            return pd.DataFrame(columns=["id", "year_label", "opening_cash", "savings", "sort_order", "created_at"])
         return df
     except Exception:
         # Fail soft: return empty frame so UI can handle no years
-        return pd.DataFrame(columns=["id", "year_label", "opening_cash", "sort_order", "created_at"])
+        return pd.DataFrame(columns=["id", "year_label", "opening_cash", "savings", "sort_order", "created_at"])
 
 
 def fetch_budget_year_labels() -> list[str]:
@@ -205,6 +203,37 @@ def update_opening_cash(year_label: str, amount: float) -> None:
     except Exception:
         amount_val = 0.0
     sb.table("accounting_budget_years").update({"opening_cash": amount_val}).eq("year_label", year_label).execute()
+
+
+def get_savings(year_label: str) -> float:
+    """Return savings for a given year_label (0.0 if missing)."""
+    if not year_label:
+        return 0.0
+    try:
+        res = (
+            sb.table("accounting_budget_years")
+            .select("savings")
+            .eq("year_label", year_label)
+            .maybe_single()
+            .execute()
+        )
+        data = getattr(res, "data", None) or {}
+        return float(data.get("savings", 0.0))
+    except Exception:
+        return 0.0
+
+
+def update_savings(year_label: str, amount: float) -> None:
+    """Update savings for a given year_label. No-op if year_label is empty.
+    Assumes the row already exists in accounting_budget_years.
+    """
+    if not year_label:
+        return
+    try:
+        amount_val = float(amount)
+    except Exception:
+        amount_val = 0.0
+    sb.table("accounting_budget_years").update({"savings": amount_val}).eq("year_label", year_label).execute()
 
 
 # ---- Budget entries (categories + amounts) ----
@@ -388,17 +417,6 @@ def update_scanner_context(new_context: str):
 import datetime as _dt
 from typing import List, Dict, Optional
 
-def _current_username() -> Optional[str]:
-    """Best-effort lookup of the logged-in member's username from session state.
-    lib.auth.authenticate() typically stores a member dict under one of these keys.
-    """
-    cand = st.session_state.get("member") or st.session_state.get("user") or {}
-    if isinstance(cand, dict) and cand.get("username"):
-        return cand.get("username")
-    # Fallbacks
-    return st.session_state.get("username")
-
-
 def get_members() -> List[Dict[str, str]]:
     """Return a lightweight member list for dropdowns and future features.
     Each item: { username, name, email }
@@ -431,88 +449,6 @@ def _parse_date(v) -> Optional[_dt.date]:
             return None
     return None
 
-def _parse_datetime(v) -> Optional[_dt.datetime]:
-    if v is None:
-        return None
-    if isinstance(v, _dt.datetime):
-        return v
-    if isinstance(v, str):
-        try:
-            v2 = v.replace("Z", "+00:00")
-            return _dt.datetime.fromisoformat(v2)
-        except Exception:
-            return None
-    return None
-
-def list_amounts_due() -> List[Dict]:
-    """Fetch open amounts, enrich with member_name for UI convenience.
-    Returns items with keys: id, member_username, member_name, amount, created_at (datetime), due_date (date), note
-    """
-    res = sb.table("amounts_due").select("id, member_username, amount, created_at, due_date, note").order("due_date").execute()
-    rows = res.data or []
-    # Build mapping username -> name
-    members = {m["username"]: m.get("name") or m["username"] for m in get_members()}
-    out: List[Dict] = []
-    for r in rows:
-        out.append({
-            "id": r.get("id"),
-            "member_username": r.get("member_username"),
-            "member_name": members.get(r.get("member_username"), r.get("member_username")),
-            "amount": float(r.get("amount") or 0.0),
-            "created_at": _parse_datetime(r.get("created_at")),
-            "due_date": _parse_date(r.get("due_date")),
-            "note": r.get("note") or "",
-        })
-    return out
-
-def create_amount_due(member_username: str, amount: float, due_date: _dt.date, note: Optional[str] = None) -> None:
-    """Insert a new amount-due row. The creator is captured from session state."""
-    if not member_username:
-        raise ValueError("member_username is required")
-    try:
-        amount = float(amount)
-    except Exception:
-        raise ValueError("amount must be a number")
-    if amount <= 0:
-        raise ValueError("amount must be > 0")
-
-    creator = _current_username()
-    if not creator:
-        raise RuntimeError("No logged-in user found to record 'inserted_by_username'.")
-
-    due = _parse_date(due_date) or (_dt.date.today() + _dt.timedelta(days=7))
-    payload = {
-        "member_username": member_username,
-        "amount": amount,
-        # created_at is defaulted by DB; due_date can be overridden here
-        "due_date": due.isoformat(),
-        "note": (note or "").strip(),
-        "inserted_by_username": creator,
-    }
-    sb.table("amounts_due").insert(payload).execute()
-
-def update_amount_due(id: str, amount: float, due_date: _dt.date, note: Optional[str] = None) -> None:
-    if not id:
-        raise ValueError("id is required")
-    try:
-        amount = float(amount)
-    except Exception:
-        raise ValueError("amount must be a number")
-    if amount <= 0:
-        raise ValueError("amount must be > 0")
-
-    due = _parse_date(due_date) or (_dt.date.today() + _dt.timedelta(days=7))
-    payload = {
-        "amount": amount,
-        "due_date": due.isoformat(),
-        "note": (note or "").strip(),
-    }
-    sb.table("amounts_due").update(payload).eq("id", id).execute()
-
-def delete_amount_due(id: str) -> None:
-    if not id:
-        return
-    sb.table("amounts_due").delete().eq("id", id).execute()
 
 # ----------------- Budget Year Selection -----------------
 def select_budget_year():

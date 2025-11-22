@@ -13,8 +13,11 @@ from lib.db import (
     load_working_capital,
     delete_working_capital_entry,
     update_working_capital_entry,
+    update_working_capital_entry,
     get_budget_category_name
 )
+from lib.email_utils import send_amount_due_notification
+from lib.backend_calculations import calculate_working_capital_metrics
 
 authenticate()
 
@@ -23,6 +26,25 @@ st.title("Working capital")
 
 # --- Year selection ---
 selected_year = select_budget_year()
+st.divider()
+
+# --- Metrics ---
+metrics = calculate_working_capital_metrics(selected_year)
+m_col1, m_col2, m_col3, m_col4 = st.columns(4)
+
+with m_col1:
+    st.metric("Total AR", f"€ {metrics['total_ar']:,.2f}")
+    st.caption(f"Member: € {metrics['total_ar_member']:,.2f} | Sponsor: € {metrics['total_ar_sponsor']:,.2f} | Other: € {metrics['total_ar_other']:,.2f}")
+
+with m_col2:
+    st.metric("Total AP", f"€ {metrics['total_ap']:,.2f}")
+
+with m_col3:
+    st.metric("Total Inventory", f"€ {metrics['total_inventory']:,.2f}")
+
+with m_col4:
+    st.metric("NWC (AR + Inventory - AP)", f"€ {metrics['nwc']:,.2f}", delta_color="normal")
+
 st.divider()
 
 # --- Working capital kind selection ---
@@ -62,6 +84,8 @@ if kind_choice == "Accounts receivable":
             )
             member_choice = None if idx is None else members[idx]
 
+            email_member = st.checkbox("Email member", value=True)
+
         ar_category = st.selectbox(
             "Category",
             [""] + fetch_categories(selected_year),
@@ -99,6 +123,20 @@ if kind_choice == "Accounts receivable":
             number_of_pieces=None,
             inserted_by_username=st.session_state.username,
         )
+
+        if ar_kind_detail == "Member" and member_choice and email_member:
+            email_sent = send_amount_due_notification(
+                member_name=member_choice.get("name") or member_choice.get("username"),
+                member_email=member_choice.get("email"),
+                amount=ar_amount,
+                category=ar_category,
+                description=ar_description.strip() if ar_description else None
+            )
+            if email_sent:
+                st.toast("Email sent to member!", icon="📧")
+            else:
+                st.error("Failed to send email.")
+
         st.success("Accounts receivable entry submitted.")
         sleep(1)
         st.rerun()
@@ -113,6 +151,7 @@ if kind_choice == "Accounts receivable":
         # Map usernames to actual names
         member_list = get_members()
         member_name_map = {m.get("username"): (m.get("name") or m.get("username")) for m in member_list}
+        member_email_map = {m.get("username"): m.get("email") for m in member_list}
         for label in ["Member", "Sponsor", "Other"]:
             group_df = receivables_df[receivables_df["kind_detail"] == label] if "kind_detail" in receivables_df.columns else pd.DataFrame()
             if group_df.empty:
@@ -123,7 +162,7 @@ if kind_choice == "Accounts receivable":
 
             for r in group_df.to_dict("records"):
                 with st.container(border=True):
-                    c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1, 1])
+                    c1, c2, c3, c4, c5, c6 = st.columns([2, 1, 1, 1, 1, 1])
 
                     # Left: title + description
                     with c1:
@@ -152,9 +191,31 @@ if kind_choice == "Accounts receivable":
 
                     # Actions
                     with c5:
+                        if label == "Member":
+                            if st.button("Send reminder", key=f"remind_{r['id']}"):
+                                uname = r.get("member_username")
+                                email = member_email_map.get(uname)
+                                if email:
+                                    cat_id = r.get("budget_category_id")
+                                    cat_name = get_budget_category_name(selected_year, cat_id) if cat_id else "Uncategorized"
+                                    
+                                    sent = send_amount_due_notification(
+                                        member_name=member_name_map.get(uname, uname),
+                                        member_email=email,
+                                        amount=float(r.get("amount") or 0),
+                                        category=cat_name,
+                                        description=r.get("description")
+                                    )
+                                    if sent:
+                                        st.toast("Reminder sent!", icon="📧")
+                                    else:
+                                        st.error("Failed to send reminder.")
+                                else:
+                                    st.error("No email found for this member.")
+                    with c6:
                         if st.button("Mark fulfilled", key=f"fulfilled_{r['id']}", help="Mark this receivable as fulfilled (will delete it)."):
                             delete_working_capital_entry(r["id"]); st.success("Removed."); sleep(1); st.rerun()
-
+                        
                     with st.expander("Edit"):
                         with st.form(f"edit_{r['id']}"):
                             new_amount = st.number_input("Amount (€)", min_value=0.00, step=0.01, value=float(r.get("amount") or 0.00))
