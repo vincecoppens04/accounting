@@ -7,7 +7,9 @@ from lib.backend_calculations import (
     calculate_budget_metrics,
     calculate_working_capital_metrics,
     calculate_dashboard_data,
-    calculate_cash_flow_evolution
+    calculate_cash_flow_evolution,
+    calculate_current_cash_position,
+    calculate_cash_position_with_nwc
 )
 
 authenticate()
@@ -23,21 +25,33 @@ st.divider()
 # Fetch metrics
 b_metrics = calculate_budget_metrics(selected_year)
 wc_metrics = calculate_working_capital_metrics(selected_year)
+current_cash = calculate_current_cash_position(selected_year)
+cash_with_nwc = calculate_cash_position_with_nwc(selected_year)
 
-st.markdown("### Key Metrics")
+st.markdown("### Key metrics")
+
+# First row of metrics
 m_col1, m_col2, m_col3, m_col4, m_col5 = st.columns(5)
 
 with m_col1:
-    st.metric("Total Income", f"€ {b_metrics['total_income']:,.2f}")
+    st.metric("Cash Position (Beginning)", f"€ {b_metrics['opening_cash']:,.2f}")
 with m_col2:
     st.metric("Total Expenses", f"€ {b_metrics['total_expenses_all']:,.2f}")
     st.caption(f"Sem 1: € {b_metrics['total_expenses_sem1']:,.2f} | Sem 2: € {b_metrics['total_expenses_sem2']:,.2f} | Year: € {b_metrics['total_expenses_year']:,.2f}")
 with m_col3:
+    st.metric("Current Cash Position", f"€ {current_cash:,.2f}")
+with m_col4:
     st.metric("NWC", f"€ {wc_metrics['nwc']:,.2f}")
     st.caption(f"AR: € {wc_metrics['total_ar']:,.2f} | AP: € {wc_metrics['total_ap']:,.2f} | Inv: € {wc_metrics['total_inventory']:,.2f}")
-with m_col4:
-    st.metric("Savings", f"€ {b_metrics['savings']:,.2f}")
 with m_col5:
+    st.metric("Cash Position with NWC", f"€ {cash_with_nwc:,.2f}")
+
+# Second row of metrics
+m_col6, m_col7, m_col8, m_col9, m_col10 = st.columns(5)
+
+with m_col6:
+    st.metric("Projected Savings", f"€ {b_metrics['savings']:,.2f}")
+with m_col7:
     st.metric("Free Float", f"€ {b_metrics['free_float']:,.2f}")
 
 st.divider()
@@ -46,7 +60,7 @@ st.divider()
 st.markdown("### Budget vs Spending")
 
 period_filter = st.radio(
-    "Select Period",
+    "Select period",
     ["Everything", "Sem 1", "Sem 2", "Year Expenses"],
     horizontal=True
 )
@@ -58,7 +72,7 @@ if dashboard_df.empty:
     st.info("No budget data found for the selected period.")
 else:
     # ----------------- Bullet Chart -----------------
-    st.subheader("Spending Overview")
+    st.subheader("Spending overview")
     
     # Prepare data for Altair
     # We want a bar for Net Spending and a marker for Budget
@@ -84,7 +98,7 @@ else:
     st.caption("Blue bars represent Net Spending. Black markers represent the Budget.")
 
     # ----------------- Budget Table -----------------
-    st.subheader("Detailed Budget Table")
+    st.subheader("Detailed budget table")
     
     # Color coding logic for 'Remaining'
     # We can use Pandas Styler or st.column_config
@@ -121,7 +135,7 @@ else:
 st.divider()
 
 # ----------------- Suggestions -----------------
-st.markdown("### Cash Flow Evolution")
+st.markdown("### Cash flow evolution")
 
 cash_flow_df = calculate_cash_flow_evolution(selected_year)
 
