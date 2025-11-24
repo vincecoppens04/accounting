@@ -29,30 +29,35 @@ current_cash = calculate_current_cash_position(selected_year)
 cash_with_nwc = calculate_cash_position_with_nwc(selected_year)
 
 st.markdown("### Key metrics")
+st.markdown("##### Budget metrics")
 
 # First row of metrics
 m_col1, m_col2, m_col3, m_col4, m_col5 = st.columns(5)
 
 with m_col1:
-    st.metric("Cash Position (Beginning)", f"€ {b_metrics['opening_cash']:,.2f}")
+    st.metric("Cash position (beginning)", f"€ {b_metrics['opening_cash']:,.2f}")
 with m_col2:
-    st.metric("Total Expenses", f"€ {b_metrics['total_expenses_all']:,.2f}")
-    st.caption(f"Sem 1: € {b_metrics['total_expenses_sem1']:,.2f} | Sem 2: € {b_metrics['total_expenses_sem2']:,.2f} | Year: € {b_metrics['total_expenses_year']:,.2f}")
+    st.metric("Income (projected)", f"€ {b_metrics['total_income']:,.2f}")
 with m_col3:
-    st.metric("Current Cash Position", f"€ {current_cash:,.2f}")
+    st.metric("Total expenses (budgetted)", f"€ {b_metrics['total_expenses_all']:,.2f}")
+    st.caption(f"Sem 1: € {b_metrics['total_expenses_sem1']:,.2f} | Sem 2: € {b_metrics['total_expenses_sem2']:,.2f} | Year: € {b_metrics['total_expenses_year']:,.2f}")
 with m_col4:
-    st.metric("NWC", f"€ {wc_metrics['nwc']:,.2f}")
-    st.caption(f"AR: € {wc_metrics['total_ar']:,.2f} | AP: € {wc_metrics['total_ap']:,.2f} | Inv: € {wc_metrics['total_inventory']:,.2f}")
+    st.metric("Desired cash position (end of year)", f"€ {b_metrics['savings']:,.2f}")
 with m_col5:
-    st.metric("Cash Position with NWC", f"€ {cash_with_nwc:,.2f}")
-
+    st.metric("Free float (non allocated capital)", f"€ {b_metrics['free_float']:,.2f}")
+    
+st.markdown("##### Cash metrics")
 # Second row of metrics
 m_col6, m_col7, m_col8, m_col9, m_col10 = st.columns(5)
 
 with m_col6:
-    st.metric("Projected Savings", f"€ {b_metrics['savings']:,.2f}")
+    st.metric("Current cash position", f"€ {current_cash:,.2f}")
 with m_col7:
-    st.metric("Free Float", f"€ {b_metrics['free_float']:,.2f}")
+    st.metric("NWC", f"€ {wc_metrics['nwc']:,.2f}")
+    st.caption(f"AR: € {wc_metrics['total_ar']:,.2f} | AP: € {wc_metrics['total_ap']:,.2f} | Inv: € {wc_metrics['total_inventory']:,.2f}")
+with m_col8:
+    st.metric("Cash position with NWC", f"€ {cash_with_nwc:,.2f}")
+
 
 st.divider()
 
