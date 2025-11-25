@@ -268,3 +268,56 @@ def calculate_cash_position_with_nwc(year_label: str) -> float:
     wc_metrics = calculate_working_capital_metrics(year_label)
     
     return current_cash + wc_metrics["nwc"]
+
+
+def calculate_cash_metrics(year_label: str) -> dict:
+    """
+    Calculate detailed cash metrics for the dashboard.
+    Returns a dictionary with:
+    - begin_cash
+    - total_income_txn
+    - total_expenses_txn
+    - current_cash
+    - cash_with_nwc
+    - nwc_breakdown (dict with ar, ap, inv)
+    """
+    # 1. Begin Cash
+    begin_cash = get_opening_cash(year_label)
+
+    # 2. Transactions Data
+    txn_df = fetch_transactions_with_categories(year_label)
+    
+    if txn_df.empty:
+        total_income_txn = 0.0
+        total_expenses_txn = 0.0
+    else:
+        txn_df["amount"] = pd.to_numeric(txn_df["amount"], errors="coerce").fillna(0.0)
+        # Income: is_expense = False
+        total_income_txn = txn_df[~txn_df["is_expense"]]["amount"].sum()
+        # Expenses: is_expense = True
+        total_expenses_txn = txn_df[txn_df["is_expense"]]["amount"].sum()
+
+    # 3. Current Cash Position
+    # Formula: Begin + Income - Expenses
+    current_cash = begin_cash + total_income_txn - total_expenses_txn
+
+    # 4. NWC Metrics
+    wc_metrics = calculate_working_capital_metrics(year_label)
+    
+    # 5. Cash with NWC
+    # Formula: Current Cash + NWC (where NWC = AR + Inv - AP)
+    # Note: wc_metrics['nwc'] is already calculated as AR + Inv - AP
+    cash_with_nwc = current_cash + wc_metrics["nwc"]
+
+    return {
+        "begin_cash": begin_cash,
+        "total_income_txn": total_income_txn,
+        "total_expenses_txn": total_expenses_txn,
+        "current_cash": current_cash,
+        "cash_with_nwc": cash_with_nwc,
+        "nwc_breakdown": {
+            "ar": wc_metrics["total_ar"],
+            "ap": wc_metrics["total_ap"],
+            "inv": wc_metrics["total_inventory"]
+        }
+    }

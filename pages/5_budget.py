@@ -62,7 +62,7 @@ st.subheader("Manage categories")
 
 # --- Add new category ---
 st.markdown("#### Add new category")
-with st.form(f"add_category_{current_year}"):
+with st.form(f"add_category_{current_year}", clear_on_submit=True):
     new_name = st.text_input("Category name")
     new_type = st.selectbox("Category type", CATEGORY_TYPES)
     new_year = st.selectbox("Year", years, index=years.index(current_year))
@@ -76,6 +76,8 @@ with st.form(f"add_category_{current_year}"):
         else:
             add_budget_category(new_year, name_clean, new_type, new_amount)
             st.success(f"Added '{name_clean}' to {new_year}.")
+            sleep(1)
+            st.rerun()
 
 # --- Edit / delete category for current year ---
 st.markdown("#### Edit or delete category for current year")

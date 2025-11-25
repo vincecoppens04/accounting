@@ -6,3 +6,4 @@ altair
 python-dotenv
 supabase
 pdfplumber
+xlsxwriter

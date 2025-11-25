@@ -366,7 +366,7 @@ def insert_transaction(row: dict) -> tuple[bool, object]:
 
 # DASHBOARD
 def fetch_transactions():
-    res = sb.table("accounting_transactions").select("*").order("txn_date").execute()
+    res = sb.table("accounting_transactions").select("*").order("id", desc=True).execute()
     return res.data or []
 
 

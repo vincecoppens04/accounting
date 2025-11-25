@@ -61,13 +61,22 @@ edit_df = filter_df.copy()
 if "txn_date" in edit_df.columns:
     edit_df["txn_date"] = pd.to_datetime(edit_df["txn_date"], errors="coerce").dt.date
 
+# Add visual "Type" column for better readability (since we can't color code text easily in editor)
+# We'll make this column disabled so it's just for display.
+# Green circle for Income (is_expense=False), Red circle for Expense (is_expense=True)
+if "is_expense" in edit_df.columns:
+    edit_df["type_visual"] = edit_df["is_expense"].apply(lambda x: "🔴" if x else "🟢")
+else:
+    edit_df["type_visual"] = ""
+
 edited = st.data_editor(
     edit_df,
     use_container_width=True,
     num_rows="dynamic",
-    column_order=["id", "txn_date", "category", "description", "amount", "is_expense", "year_label"],
+    column_order=["id", "type_visual", "txn_date", "category", "description", "amount", "is_expense", "year_label"],
     column_config={
         "id": st.column_config.NumberColumn("ID", disabled=True),
+        "type_visual": st.column_config.TextColumn("Type", disabled=True, help="🟢 Income, 🔴 Expense"),
         "txn_date": st.column_config.DateColumn("Date"),
         "category": st.column_config.TextColumn("Category", disabled=True),
         "description": st.column_config.TextColumn("Description"),
