@@ -46,10 +46,10 @@ export_years = fetch_budget_year_labels()
 if not export_years:
     st.info("No budget years available to export.")
 else:
-    col_ex_year, col_ex_btn = st.columns([1, 1])
+    col_ex_year, col_ex_btn_prep = st.columns([2, 1])
     with col_ex_year:
         selected_export_year = st.selectbox("Select Year", export_years, key="export_year_select")
-    with col_ex_btn:
+    with col_ex_btn_prep:
         st.write("") # Spacer to align button with input box
         st.write("") 
         
@@ -66,12 +66,25 @@ else:
         # Optimization: cache the generation?
         # For now, let's just generate it. If it's slow, we can optimize.
         
-        excel_data = generate_excel_export(selected_export_year)
-        
+        if st.button("Prepare Excel export", type="secondary"):
+            with st.spinner("Preparing Excel export…"):
+                try:
+                    st.session_state["excel_export_data"] = generate_excel_export(selected_export_year)
+                    st.session_state["excel_export_year"] = selected_export_year
+                    st.success("Export prepared")
+                except httpx.ReadError:
+                    st.error("Could not read data from the backend (temporary error). Please try again.")
+                except Exception as e:
+                    st.error(f"Unexpected error while preparing export: {e}")
+
+    # Show download button only if we have data
+    excel_data = st.session_state.get("excel_export_data")
+    excel_year = st.session_state.get("excel_export_year")
+    if excel_data is not None:
         st.download_button(
-            label="Download Excel",
+            label=f"Download Excel ({excel_year})",
             data=excel_data,
-            file_name=f"investia_export_{selected_export_year}.xlsx",
+            file_name=f"investia_export_{excel_year}.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary"
         )
