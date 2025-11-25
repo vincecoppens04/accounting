@@ -3,7 +3,8 @@ authenticate()
 
 import streamlit as st
 
-from lib.db import fetch_settings, update_settings
+from lib.db import fetch_settings, update_settings, fetch_budget_year_labels
+from lib.export_utils import generate_excel_export
 
 # --- Page config ---
 st.set_page_config(page_title="Settings — Investia", page_icon="⚙️", layout="wide")
@@ -34,6 +35,48 @@ if st.button("Save financial year start", type="primary"):
         "fy_start_day": int(fy_day_val),
     })
     st.success("Financial year start saved.")
+
+st.divider()
+
+# --- Export Data ---
+st.subheader("Export Data")
+st.caption("Download all financial data (Budget, Transactions, Working Capital) for a specific year as an Excel file.")
+
+export_years = fetch_budget_year_labels()
+if not export_years:
+    st.info("No budget years available to export.")
+else:
+    col_ex_year, col_ex_btn = st.columns([1, 1])
+    with col_ex_year:
+        selected_export_year = st.selectbox("Select Year", export_years, key="export_year_select")
+    with col_ex_btn:
+        st.write("") # Spacer to align button with input box
+        st.write("") 
+        
+        # We generate the file on click (or pre-generate if small enough, but on click is better for fresh data).
+        # However, st.download_button requires the data upfront or a callback.
+        # Generating on every render is expensive.
+        # We can use a callback to generate data? No, download_button needs 'data' arg.
+        # If data is small, we can generate it.
+        # Let's generate it when the user selects a year? 
+        # Actually, for this scale, generating it on render is probably fine, or we can use a "Prepare Download" button pattern.
+        # But st.download_button is the standard way.
+        # Let's try to generate it only if the user interacts? Streamlit re-runs on interaction.
+        # So we generate it every time the page loads? That might be slow if data grows.
+        # Optimization: cache the generation?
+        # For now, let's just generate it. If it's slow, we can optimize.
+        
+        excel_data = generate_excel_export(selected_export_year)
+        
+        st.download_button(
+            label="Download Excel",
+            data=excel_data,
+            file_name=f"investia_export_{selected_export_year}.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary"
+        )
+
+st.divider()
 
 if st.session_state.get("authenticated"):
     if st.button("Logout"):

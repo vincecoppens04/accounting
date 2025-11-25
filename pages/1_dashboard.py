@@ -9,7 +9,8 @@ from lib.backend_calculations import (
     calculate_dashboard_data,
     calculate_cash_flow_evolution,
     calculate_current_cash_position,
-    calculate_cash_position_with_nwc
+    calculate_cash_position_with_nwc,
+    calculate_cash_metrics
 )
 
 authenticate()
@@ -24,9 +25,7 @@ st.divider()
 # ----------------- Metrics Overview -----------------
 # Fetch metrics
 b_metrics = calculate_budget_metrics(selected_year)
-wc_metrics = calculate_working_capital_metrics(selected_year)
-current_cash = calculate_current_cash_position(selected_year)
-cash_with_nwc = calculate_cash_position_with_nwc(selected_year)
+c_metrics = calculate_cash_metrics(selected_year)
 
 st.markdown("### Key metrics")
 st.markdown("##### Budget metrics")
@@ -51,12 +50,16 @@ st.markdown("##### Cash metrics")
 m_col6, m_col7, m_col8, m_col9, m_col10 = st.columns(5)
 
 with m_col6:
-    st.metric("Current cash position", f"€ {current_cash:,.2f}")
+    st.metric("Begin cash position", f"€ {c_metrics['begin_cash']:,.2f}")
 with m_col7:
-    st.metric("NWC", f"€ {wc_metrics['nwc']:,.2f}")
-    st.caption(f"AR: € {wc_metrics['total_ar']:,.2f} | AP: € {wc_metrics['total_ap']:,.2f} | Inv: € {wc_metrics['total_inventory']:,.2f}")
+    st.metric("All income (txn)", f"€ {c_metrics['total_income_txn']:,.2f}")
 with m_col8:
-    st.metric("Cash position with NWC", f"€ {cash_with_nwc:,.2f}")
+    st.metric("All expenses (txn)", f"€ {c_metrics['total_expenses_txn']:,.2f}")
+with m_col9:
+    st.metric("Current cash position", f"€ {c_metrics['current_cash']:,.2f}")
+with m_col10:
+    st.metric("Cash position with NWC", f"€ {c_metrics['cash_with_nwc']:,.2f}")
+    st.caption(f"AR: € {c_metrics['nwc_breakdown']['ar']:,.2f} | AP: € {c_metrics['nwc_breakdown']['ap']:,.2f} | Inv: € {c_metrics['nwc_breakdown']['inv']:,.2f}")
 
 
 st.divider()
