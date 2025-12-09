@@ -393,6 +393,65 @@ def upsert_transactions(df: pd.DataFrame) -> tuple[int, int]:
     for col in ["txn_date", "time_label", "category", "description", "amount", "is_expense", "currency", "id"]:
         if col not in clean.columns:
             clean[col] = None
+
+    # Separate updates (have id) from inserts (no id)
+    # Note: id might be NaN or None or empty string
+    clean["id"] = clean["id"].astype(str).replace({"nan": None, "None": None, "": None})
+    
+    updates = clean[clean["id"].notna()].copy()
+    inserts = clean[clean["id"].isna()].copy()
+
+    updated_count = 0
+    inserted_count = 0
+
+    # 1. Perform updates
+    if not updates.empty:
+        # Prepare payload list
+        # We only update fields that are editable: txn_date, description, amount, is_expense
+        # We must include 'id' to identify the row
+        update_payload = []
+        for _, row in updates.iterrows():
+            item = {
+                "id": row["id"],
+                "txn_date": row["txn_date"],
+                "description": row["description"],
+                "amount": row["amount"],
+                "is_expense": bool(row["is_expense"]),
+                "category": row["category"], # Required by DB constraint
+            }
+            update_payload.append(item)
+        
+        if update_payload:
+            try:
+                sb.table("accounting_transactions").upsert(update_payload).execute()
+                updated_count = len(update_payload)
+            except Exception as e:
+                st.error(f"Error updating transactions: {e}")
+
+    # 2. Perform inserts
+    if not inserts.empty:
+        insert_payload = []
+        for _, row in inserts.iterrows():
+            item = {
+                "txn_date": row["txn_date"],
+                "description": row["description"],
+                "amount": row["amount"],
+                "is_expense": bool(row["is_expense"]),
+                # 'category' is not editable in the grid, so we might miss it if it's a new row.
+                # But the user instruction says "use Insert Transaction page" for new categories.
+                # We'll try to include it if present.
+                "category": row["category"] if row["category"] else "Uncategorized",
+            }
+            insert_payload.append(item)
+
+        if insert_payload:
+            try:
+                sb.table("accounting_transactions").insert(insert_payload).execute()
+                inserted_count = len(insert_payload)
+            except Exception as e:
+                st.error(f"Error inserting transactions: {e}")
+
+    return updated_count, inserted_count
     
 def delete_transactions(ids: list[str]) -> int:
     """Delete transactions by uuid id. Returns number deleted."""

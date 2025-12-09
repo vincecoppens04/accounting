@@ -88,7 +88,7 @@ edited = st.data_editor(
 )
 if st.button("Save changes"):
     # Determine deleted rows
-    original_ids = set(full_df["id"].astype(str).tolist())
+    original_ids = set(filter_df["id"].astype(str).tolist())
     edited_ids = set(edited["id"].astype(str).dropna().tolist())
     deleted_ids = list(original_ids - edited_ids)
 
