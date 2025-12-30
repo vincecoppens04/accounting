@@ -140,6 +140,93 @@ else:
         }
     )
 
+    # ----------------- Budget Utilization Graphic -----------------
+    st.markdown("### Budget Utilization")
+    st.caption("Only useful at the end of the selected period")
+    # Calculate totals
+    total_budget_period = dashboard_df["budget"].sum()
+    total_spent_period = dashboard_df["net_spending"].fillna(0).sum()
+    
+    if total_budget_period > 0:
+        utilization_pct = (total_spent_period / total_budget_period) * 100
+    else:
+        # Avoid division by zero if budget is 0
+        utilization_pct = 0.0 if total_spent_period <= 0 else 100.0 # pure spending without budget is effectively 100%+ used (infinity actually)
+
+    # Columns for Chart and Text
+    g_col1, g_col2 = st.columns([1, 1])
+
+    with g_col1:
+        # Prepare Data for Chart
+        if total_spent_period > total_budget_period:
+            # Over budget case
+            # We want to show the Budgeted portion (Blue) and the Excess portion (Red)
+            # The total circle will represent the Total Spending.
+            excess_amount = total_spent_period - total_budget_period
+            
+            # If budget is 0, everything is over budget
+            if total_budget_period <= 0:
+                 chart_data = pd.DataFrame({
+                    "category": ["Over Budget"],
+                    "value": [total_spent_period],
+                    "color": ["#ff4b4b"] 
+                })
+            else:
+                chart_data = pd.DataFrame({
+                    "category": ["Budget", "Over Budget"],
+                    "value": [total_budget_period, excess_amount],
+                    "color": ["#29b5e8", "#ff4b4b"] # Blue for allowed budget, Red for excess
+                })
+            
+            center_text = f"{utilization_pct:.1f}%"
+        else:
+            # Under or on budget
+            remaining_val = total_budget_period - total_spent_period
+            
+            if total_spent_period < 0: 
+                 # Negative spending (net income in expense budget)
+                 chart_data = pd.DataFrame({
+                    "category": ["Net Income"],
+                    "value": [100],
+                    "color": ["#3dd56d"] 
+                })
+                 center_text = "N/A"
+            else:
+                 chart_data = pd.DataFrame({
+                    "category": ["Spent", "Remaining"],
+                    "value": [total_spent_period, remaining_val],
+                    "color": ["#29b5e8", "#f0f2f6"] # Blue and Gray
+                })
+                 center_text = f"{utilization_pct:.1f}%"
+
+        base = alt.Chart(chart_data).encode(
+            theta=alt.Theta("value", stack=True)
+        )
+
+        pie = base.mark_arc(outerRadius=120, innerRadius=80).encode(
+            color=alt.Color("category", scale=alt.Scale(domain=chart_data["category"].tolist(), range=chart_data["color"].tolist()), legend=None),
+            order=alt.Order("category", sort="descending"),
+            tooltip=["category", alt.Tooltip("value", format=",.2f")]
+        )
+
+        text = base.mark_text(radius=0).encode(
+            text=alt.value(center_text),
+            color=alt.value("black"),
+            size=alt.value(24)
+        )
+
+        st.altair_chart(pie + text, use_container_width=True)
+
+    with g_col2:
+        st.markdown(f"#### Period Summary")
+        st.metric("Total Budget", f"€ {total_budget_period:,.2f}")
+        st.metric("Total Spent", f"€ {total_spent_period:,.2f}")
+        
+        remaining_total = total_budget_period - total_spent_period
+        
+        # Removed delta as requested
+        st.metric("Remaining", f"€ {remaining_total:,.2f}")
+
 st.divider()
 
 # ----------------- Suggestions -----------------
