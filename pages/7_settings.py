@@ -1,4 +1,5 @@
 from lib.auth import authenticate, logout
+from lib.ui import render_footer
 authenticate()
 
 import streamlit as st
@@ -94,3 +95,5 @@ st.divider()
 if st.session_state.get("authenticated"):
     if st.button("Logout"):
         logout()
+
+render_footer()

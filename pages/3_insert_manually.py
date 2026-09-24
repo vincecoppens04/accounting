@@ -1,4 +1,5 @@
 from lib.auth import authenticate
+from lib.ui import render_footer
 authenticate()
 
 import streamlit as st
@@ -48,3 +49,5 @@ if submitted:
             sleep(1)
         else:
             st.error("Failed to insert transaction.")
+
+render_footer()

@@ -1,4 +1,5 @@
 from lib.auth import authenticate
+from lib.ui import render_footer
 import streamlit as st
 import pandas as pd
 from time import sleep
@@ -429,3 +430,5 @@ if kind_choice == "Inventory":
                 )
 
         st.success("Inventory saved."); sleep(1); st.rerun()
+
+render_footer()

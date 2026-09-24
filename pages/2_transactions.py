@@ -1,4 +1,5 @@
 from lib.auth import authenticate
+from lib.ui import render_footer
 authenticate()
 
 from time import sleep
@@ -104,5 +105,4 @@ if st.button("Save changes"):
         sleep(1)
     st.rerun()
 
-    # --Apply filters--
-    
+render_footer()

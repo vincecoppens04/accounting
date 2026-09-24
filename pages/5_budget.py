@@ -1,4 +1,5 @@
 from lib.auth import authenticate
+from lib.ui import render_footer
 import streamlit as st
 import pandas as pd
 from time import sleep
@@ -228,3 +229,5 @@ section("Income", "income")
 section("Full year", "year")
 section("Semester 1", "semester1")
 section("Semester 2", "semester2")
+
+render_footer()
