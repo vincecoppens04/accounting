@@ -1,5 +1,6 @@
 import streamlit as st
 from lib.auth import authenticate
+from lib.ui import render_footer
 from lib.db import fetch_scanner_context, update_scanner_context, fetch_categories, select_budget_year, get_budget_category_id, insert_transaction
 from lib.scanner_logic import classify_transactions
 import pandas as pd
@@ -116,3 +117,5 @@ if classified_df is not None:
                     st.rerun()
         
         st.markdown("---")
+
+render_footer()

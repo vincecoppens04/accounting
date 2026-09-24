@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import altair as alt
 from lib.auth import authenticate
+from lib.ui import render_footer
 from lib.db import select_budget_year
 from lib.backend_calculations import (
     calculate_budget_metrics,
@@ -245,3 +246,5 @@ else:
     ).properties(height=400)
     
     st.altair_chart(line_chart, use_container_width=True)
+
+render_footer()
